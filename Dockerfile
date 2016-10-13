@@ -54,7 +54,7 @@ COPY ${baseDir}/init_scripts/  /etc/my_init.d/
 
 
 # Install ShareLaTeX
-RUN git clone https://github.com/sharelatex/sharelatex.git /var/www/sharelatex #random_change
+RUN git clone https://git.iiet.pl/iiet/sharelatex.git /var/www/sharelatex #random_change
 
 ADD ${baseDir}/services.js /var/www/sharelatex/config/services.js
 ADD ${baseDir}/package.json /var/www/package.json
