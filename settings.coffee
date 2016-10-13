@@ -178,15 +178,13 @@ settings =
 			pass: httpAuthPass
 	references:{}
 	notifications:undefined
-	
+
 	oauth:
 		is_enabled: true
 		client_id: process.env["SHARELATEX_OAUTH_CLIENT_ID"] or ':)'
 		client_secret: process.env["SHARELATEX_OAUTH_CLIENT_SECRET"] or ':)'
 		base_url: 'https://accounts.iiet.pl/'
 		scope: 'public extended'
-
-
 
 #### OPTIONAL CONFIGERABLE SETTINGS
 
