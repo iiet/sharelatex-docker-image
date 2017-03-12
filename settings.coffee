@@ -44,6 +44,22 @@ settings =
 			port: process.env["SHARELATEX_REDIS_PORT"] or "6379"
 			password: process.env["SHARELATEX_REDIS_PASS"] or ""
 		fairy: redisConfig
+		documentupdater: [{
+			primary: true
+			port: process.env["SHARELATEX_REDIS_PORT"] or "6379"
+			host: process.env["SHARELATEX_REDIS_HOST"] or "dockerhost"
+			password: process.env["SHARELATEX_REDIS_PASS"] or ""
+			key_schema:
+				blockingKey: ({doc_id}) -> "Blocking:#{doc_id}"
+				docLines: ({doc_id}) -> "doclines:#{doc_id}"
+				docOps: ({doc_id}) -> "DocOps:#{doc_id}"
+				docVersion: ({doc_id}) -> "DocVersion:#{doc_id}"
+				docHash: ({doc_id}) -> "DocHash:#{doc_id}"
+				projectKey: ({doc_id}) -> "ProjectId:#{doc_id}"
+				docsInProject: ({project_id}) -> "DocsIn:#{project_id}"
+				ranges: ({doc_id}) -> "Ranges:#{doc_id}"
+		}]
+
 
 	# The compile server (the clsi) uses a SQL database to cache files and
 	# meta-data. sqllite is the default, and the load is low enough that this will
@@ -109,6 +125,7 @@ settings =
 	# The name this is used to describe your ShareLaTeX Installation
 	appName: process.env["SHARELATEX_APP_NAME"] or "ShareLaTeX (Community Edition)"
 
+	restrictInvitesToExistingAccounts: process.env["SHARELATEX_RESTRICT_INVITES_TO_EXISTING_ACCOUNTS"] == 'true'
 
 	nav:
 		title: process.env["SHARELATEX_NAV_TITLE"] or  process.env["SHARELATEX_APP_NAME"] or "ShareLaTeX Community Edition"
@@ -146,6 +163,11 @@ settings =
 	# address and http/https protocol information.
 
 	behindProxy: process.env["SHARELATEX_BEHIND_PROXY"] or false
+
+	i18n:
+		subdomainLang:
+			www: {lngCode:process.env["SHARELATEX_SITE_LANGUAGE"] or "en", url: siteUrl}
+		defaultLng: process.env["SHARELATEX_SITE_LANGUAGE"] or "en"
 
 	# Spell Check Languages
 	# ---------------------
@@ -186,7 +208,16 @@ settings =
 		base_url: 'https://accounts.iiet.pl/'
 		scope: 'public extended'
 
-#### OPTIONAL CONFIGERABLE SETTINGS
+	defaultFeatures:
+		collaborators: -1
+		dropbox: true
+		versioning: true
+		compileTimeout: 180
+		compileGroup: "standard"
+		references: true
+		templates: true
+
+## OPTIONAL CONFIGERABLE SETTINGS
 
 if process.env["SHARELATEX_LEFT_FOOTER"]?
 	try
@@ -203,12 +234,23 @@ if process.env["SHARELATEX_RIGHT_FOOTER"]?
 
 if process.env["SHARELATEX_HEADER_IMAGE_URL"]?
 	settings.nav.custom_logo = process.env["SHARELATEX_HEADER_IMAGE_URL"]
-	
-if process.env["SHARELATEX_HEADER"]?
-	settings.nav.header = process.env["SHARELATEX_HEADER_NAV_LINKS"]
 
-# if process.env["SHARELATEX_PROXY_LEARN"]?
-# 	settings.nav.header.push({text: "help", class: "subdued", dropdown: [{text: "documentation", url: "/learn"}] })
+if process.env["SHARELATEX_HEADER_NAV_LINKS"]?
+	console.error """
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+#  WARNING: SHARELATEX_HEADER_NAV_LINKS is no longer supported
+#  See https://github.com/sharelatex/sharelatex/wiki/Configuring-Headers,-Footers-&-Logo
+#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+"""
+
+if process.env["SHARELATEX_HEADER_EXTRAS"]?
+	try
+		settings.nav.header_extras = JSON.parse(process.env["SHARELATEX_HEADER_EXTRAS"])
+	catch e
+		console.error("could not parse SHARELATEX_HEADER_EXTRAS, not valid JSON")
+
 
 
 # Sending Email
@@ -237,7 +279,7 @@ if process.env["SHARELATEX_EMAIL_FROM_ADDRESS"]?
 			secure: parse(process.env["SHARELATEX_EMAIL_SMTP_SECURE"])
 			ignoreTLS: parse(process.env["SHARELATEX_EMAIL_SMTP_IGNORE_TLS"])
 
-
+		textEncoding:  process.env["SHARELATEX_EMAIL_TEXT_ENCODING"]
 		templates:
 			customFooter: process.env["SHARELATEX_CUSTOM_EMAIL_FOOTER"]
 
@@ -249,7 +291,12 @@ if process.env["SHARELATEX_EMAIL_FROM_ADDRESS"]?
 	if process.env["SHARELATEX_EMAIL_SMTP_TLS_REJECT_UNAUTH"]?
 		settings.email.parameters.tls =
 			rejectUnauthorized: parse(process.env["SHARELATEX_EMAIL_SMTP_TLS_REJECT_UNAUTH"])
-		
+
+
+# i18n
+if process.env["SHARELATEX_LANG_DOMAIN_MAPPING"]?		
+
+	settings.i18n.subdomainLang = parse(process.env["SHARELATEX_LANG_DOMAIN_MAPPING"])
 
 # Password Settings
 # -----------
@@ -259,7 +306,7 @@ if process.env["SHARELATEX_PASSWORD_VALIDATION_PATTERN"] or process.env["SHARELA
 
 	settings.passwordStrengthOptions =
 		pattern: process.env["SHARELATEX_PASSWORD_VALIDATION_PATTERN"] or "aA$3"
-		length: {min:process.env["SHARELATEX_PASSWORD_VALIDATION_MIN_LENGTH"] or 8, max: process.env["SHARELATEX_PASSWORD_VALIDATION_MAX_LENGTH"] or 50}
+		length: {min:process.env["SHARELATEX_PASSWORD_VALIDATION_MIN_LENGTH"] or 8, max: process.env["SHARELATEX_PASSWORD_VALIDATION_MAX_LENGTH"] or 150}
 
 
 
@@ -275,26 +322,74 @@ if parse(process.env["SHARELATEX_IS_SERVER_PRO"]) == true
 
 # LDAP - SERVER PRO ONLY
 # ----------
-# Settings below use a working LDAP test server kindly provided by forumsys.com
-# When testing with forumsys.com use username = einstein and password = password
-	
 
 if process.env["SHARELATEX_LDAP_HOST"]
+	console.error """
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+#  WARNING: The LDAP configuration format has changed in version 0.5.1
+#  See https://github.com/sharelatex/sharelatex/wiki/Server-Pro:-LDAP-Config
+#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+"""
+
+if process.env["SHARELATEX_LDAP_URL"]
+	settings.externalAuth = true
 	settings.ldap =
-		host: process.env["SHARELATEX_LDAP_HOST"]
-		dn: process.env["SHARELATEX_LDAP_DN"]
-		baseSearch: process.env["SHARELATEX_LDAP_BASE_SEARCH"]
-		filter:  process.env["SHARELATEX_LDAP_FILTER"]
-		failMessage: process.env["SHARELATEX_LDAP_FAIL_MESSAGE"] or 'LDAP User Fail'
-		fieldName: process.env["SHARELATEX_LDAP_FIELD_NAME"] or 'LDAP User'
-		placeholder: process.env["SHARELATEX_LDAP_PLACEHOLDER"] or 'LDAP User ID'
-		emailAtt: process.env["SHARELATEX_LDAP_EMAIL_ATT"] or 'mail'
-		anonymous: parse(process.env["SHARELATEX_LDAP_ANONYMOUS"])
-		adminDN: process.env["SHARELATEX_LDAP_ADMIN_DN"]	
-		adminPW: process.env["SHARELATEX_LDAP_ADMIN_PW"]
-		starttls:  parse(process.env["SHARELATEX_LDAP_TLS"])
+		emailAtt: process.env["SHARELATEX_LDAP_EMAIL_ATT"]
 		nameAtt: process.env["SHARELATEX_LDAP_NAME_ATT"]
 		lastNameAtt: process.env["SHARELATEX_LDAP_LAST_NAME_ATT"]
+		updateUserDetailsOnLogin: process.env["SHARELATEX_LDAP_UPDATE_USER_DETAILS_ON_LOGIN"] == 'true'
+		placeholder: process.env["SHARELATEX_LDAP_PLACEHOLDER"]
+		server:
+			url: process.env["SHARELATEX_LDAP_URL"]
+			bindDn: process.env["SHARELATEX_LDAP_BIND_DN"]
+			bindCredentials: process.env["SHARELATEX_LDAP_BIND_CREDENTIALS"]
+			bindProperty: process.env["SHARELATEX_LDAP_BIND_PROPERTY"]
+			searchBase: process.env["SHARELATEX_LDAP_SEARCH_BASE"]
+			searchScope: process.env["SHARELATEX_LDAP_SEARCH_SCOPE"]
+			searchFilter: process.env["SHARELATEX_LDAP_SEARCH_FILTER"]
+			searchAttributes: (
+				if _ldap_search_attribs = process.env["SHARELATEX_LDAP_SEARCH_ATTRIBUTES"]
+					try
+						JSON.parse(_ldap_search_attribs)
+					catch e
+						console.error "could not parse SHARELATEX_LDAP_SEARCH_ATTRIBUTES"
+				else
+					undefined
+			)
+			groupDnProperty: process.env["SHARELATEX_LDAP_GROUP_DN_PROPERTY"]
+			groupSearchBase: process.env["SHARELATEX_LDAP_GROUP_SEARCH_BASE"]
+			groupSearchScope: process.env["SHARELATEX_LDAP_GROUP_SEARCH_SCOPE"]
+			groupSearchFilter: process.env["SHARELATEX_LDAP_GROUP_SEARCH_FILTER"]
+			groupSearchAttributes: (
+				if _ldap_group_search_attribs = process.env["SHARELATEX_LDAP_GROUP_SEARCH_ATTRIBUTES"]
+					try
+						JSON.parse(_ldap_group_search_attribs)
+					catch e
+						console.error "could not parse SHARELATEX_LDAP_GROUP_SEARCH_ATTRIBUTES"
+				else
+					undefined
+			)
+			cache: process.env["SHARELATEX_LDAP_CACHE"] == 'true'
+			timeout: (
+				if _ldap_timeout = process.env["SHARELATEX_LDAP_TIMEOUT"]
+					try
+						parseInt(_ldap_timeout)
+					catch e
+						console.error "Cannot parse SHARELATEX_LDAP_TIMEOUT"
+				else
+					undefined
+			)
+			connectTimeout: (
+				if _ldap_connect_timeout = process.env["SHARELATEX_LDAP_CONNECT_TIMEOUT"]
+					try
+						parseInt(_ldap_connect_timeout)
+					catch e
+						console.error "Cannot parse SHARELATEX_LDAP_CONNECT_TIMEOUT"
+				else
+					undefined
+			)
 
 	if process.env["SHARELATEX_LDAP_TLS_OPTS_CA_PATH"]
 		try
@@ -304,14 +399,94 @@ if process.env["SHARELATEX_LDAP_HOST"]
 
 		if typeof(ca)  == 'string'
 			ca_paths = [ca]
-		else if typeof(ca) == 'object' && ca.length?
+		else if typeof(ca) == 'object' && ca?.length?
 			ca_paths = ca
 		else
 			console.error "problem parsing SHARELATEX_LDAP_TLS_OPTS_CA_PATH"
 
-		settings.ldap.tlsOptions =
+		settings.ldap.server.tlsOptions =
 			rejectUnauthorized: process.env["SHARELATEX_LDAP_TLS_OPTS_REJECT_UNAUTH"] == "true"
 			ca:ca_paths  # e.g.'/etc/ldap/ca_certs.pem'
+
+
+
+
+
+if process.env["SHARELATEX_SAML_ENTRYPOINT"]
+	# NOTE: see https://github.com/bergie/passport-saml/blob/master/README.md for docs of `server` options
+	settings.externalAuth = true
+	settings.saml =
+		updateUserDetailsOnLogin: process.env["SHARELATEX_SAML_UPDATE_USER_DETAILS_ON_LOGIN"] == 'true'
+		identityServiceName: process.env["SHARELATEX_SAML_IDENTITY_SERVICE_NAME"]
+		emailField: process.env["SHARELATEX_SAML_EMAIL_FIELD"] || process.env["SHARELATEX_SAML_EMAIL_FIELD_NAME"]
+		firstNameField: process.env["SHARELATEX_SAML_FIRST_NAME_FIELD"]
+		lastNameField:  process.env["SHARELATEX_SAML_LAST_NAME_FIELD"]
+		server:
+			# strings
+			entryPoint: process.env["SHARELATEX_SAML_ENTRYPOINT"]
+			callbackUrl: process.env["SHARELATEX_SAML_CALLBACK_URL"]
+			issuer: process.env["SHARELATEX_SAML_ISSUER"]
+			cert: process.env["SHARELATEX_SAML_CERT"]
+			privateCert: process.env["SHARELATEX_SAML_PRIVATE_CERT"]
+			decryptionPvk: process.env["SHARELATEX_SAML_DECRYPTION_PVK"]
+			signatureAlgorithm: process.env["SHARELATEX_SAML_SIGNATURE_ALGORITHM"]
+			identifierFormat: process.env["SHARELATEX_SAML_IDENTIFIER_FORMAT"]
+			attributeConsumingServiceIndex: process.env["SHARELATEX_SAML_ATTRIBUTE_CONSUMING_SERVICE_INDEX"]
+			authnContext: process.env["SHARELATEX_SAML_AUTHN_CONTEXT"]
+			authnRequestBinding: process.env["SHARELATEX_SAML_AUTHN_REQUEST_BINDING"]
+			validateInResponseTo: process.env["SHARELATEX_SAML_VALIDATE_IN_RESPONSE_TO"]
+			cacheProvider: process.env["SHARELATEX_SAML_CACHE_PROVIDER"]
+			logoutUrl: process.env["SHARELATEX_SAML_LOGOUT_URL"]
+			logoutCallbackUrl: process.env["SHARELATEX_SAML_LOGOUT_CALLBACK_URL"]
+			disableRequestedAuthnContext: process.env["SHARELATEX_SAML_DISABLE_REQUESTED_AUTHN_CONTEXT"] == 'true'
+			forceAuthn: process.env["SHARELATEX_SAML_FORCE_AUTHN"] == 'true'
+			skipRequestCompression: process.env["SHARELATEX_SAML_SKIP_REQUEST_COMPRESSION"] == 'true'
+			acceptedClockSkewMs: (
+				if _saml_skew = process.env["SHARELATEX_SAML_ACCEPTED_CLOCK_SKEW_MS"]
+					try
+						parseInt(_saml_skew)
+					catch e
+						console.error "Cannot parse SHARELATEX_SAML_ACCEPTED_CLOCK_SKEW_MS"
+				else
+					undefined
+			)
+			requestIdExpirationPeriodMs: (
+				if _saml_exiration = process.env["SHARELATEX_SAML_REQUEST_ID_EXPIRATION_PERIOD_MS"]
+					try
+						parseInt(_saml_expiration)
+					catch e
+						console.error "Cannot parse SHARELATEX_SAML_REQUEST_ID_EXPIRATION_PERIOD_MS"
+				else
+					undefined
+			)
+			additionalParams: (
+				if _saml_additionalParams = process.env["SHARELATEX_SAML_ADDITIONAL_PARAMS"]
+					try
+						JSON.parse(_saml_additionalParams)
+					catch e
+						console.error "Cannot parse SHARELATEX_SAML_ADDITIONAL_PARAMS"
+				else
+					undefined
+			)
+			additionalAuthorizeParams: (
+				if _saml_additionalAuthorizeParams = process.env["SHARELATEX_SAML_ADDITIONAL_AUTHORIZE_PARAMS"]
+					try
+						JSON.parse(_saml_additionalAuthorizeParams )
+					catch e
+						console.error "Cannot parse SHARELATEX_SAML_ADDITIONAL_AUTHORIZE_PARAMS"
+				else
+					undefined
+			)
+			additionalLogoutParams: (
+				if _saml_additionalLogoutParams = process.env["SHARELATEX_SAML_ADDITIONAL_LOGOUT_PARAMS"]
+					try
+						JSON.parse(_saml_additionalLogoutParams )
+					catch e
+						console.error "Cannot parse SHARELATEX_SAML_ADDITIONAL_LOGOUT_PARAMS"
+				else
+					undefined
+			)
+
 
 # Compiler
 # --------
@@ -328,6 +503,12 @@ if process.env["SANDBOXED_COMPILES"] == "true"
 	if !settings.path?
 		settings.path = {}
 	settings.path.synctexBaseDir = () -> "/compile"
+	if process.env['SANDBOXED_COMPILES_SIBLING_CONTAINERS']  == 'true'
+		console.log("Using sibling containers for sandoxed compiles")
+		if process.env['SANDBOXED_COMPILES_HOST_DIR']
+			settings.path.sandboxedCompilesHostDir = process.env['SANDBOXED_COMPILES_HOST_DIR']
+		else
+			console.error('Sibling containers, but SANDBOXED_COMPILES_HOST_DIR not set')
 
 
 # Templates
