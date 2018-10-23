@@ -1,12 +1,13 @@
 # Sharelatex Community Edition (sharelatex/sharelatex)
 
-FROM sharelatex/sharelatex-base:latest
+FROM iiet/sharelatex-base:2018.10
 
 ENV baseDir .
 
 # Install sharelatex settings file
 ADD ${baseDir}/settings.coffee /etc/sharelatex/settings.coffee
 ENV SHARELATEX_CONFIG /etc/sharelatex/settings.coffee
+
 
 # Install TexLive
 RUN wget http://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz; \
@@ -19,7 +20,7 @@ RUN echo "selected_scheme scheme-basic" >> /install-tl-unx/texlive.profile; \
 RUN rm -r /install-tl-unx; \
 	rm install-tl-unx.tar.gz
 
-ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/texlive/2016/bin/x86_64-linux/
+ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/texlive/2018/bin/x86_64-linux/
 RUN tlmgr install latexmk texcount beamer polski nag microtype scheme-full
 
 RUN npm install -g grunt-cli
@@ -45,7 +46,7 @@ ADD ${baseDir}/logrotate/sharelatex /etc/logrotate.d/sharelatex
 COPY ${baseDir}/init_scripts/  /etc/my_init.d/
 
 # Install ShareLaTeX
-RUN git clone https://git.iiet.pl/iiet/sharelatex.git /var/www/sharelatex #random_change
+RUN git clone https://git.iiet.pl/iiet/sharelatex.git -b 'sharelatex-2018.10' /var/www/sharelatex #random_change
 
 ADD ${baseDir}/services.js /var/www/sharelatex/config/services.js
 ADD ${baseDir}/package.json /var/www/package.json
